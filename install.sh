@@ -1,48 +1,152 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-R='\033[31m'
-G='\033[32m'
-Y='\033[33m'
-C='\033[36m'
+# Palette
+R='\033[1;31m'
+G='\033[1;32m'
+Y='\033[1;33m'
+C='\033[1;36m'
+B='\033[1;34m'
+W='\033[1;37m'
+GR='\033[1;30m'
 N='\033[0m'
 
+# Verified Badge (SkyBlue + White)
+V_BG='\033[48;5;39m'
+V_FG='\033[1;97m'
+VERIFIED="${V_BG}${V_FG} ✓ ${N}"
+
 clear
-echo -e "${C}MyTerminalOS Installer (Fixed)${N}"
-sleep 0.5
 
-function ok(){ echo -e "${G}✔${N} $1"; }
-function load(){ echo -en "${Y}•${N} $1...\r"; sleep 0.7; }
+# Banner
+echo -e "${C}┌────────────────────────────────────────────────────────┐${N}"
+echo -e "${C}│${N}                                                    "  
+echo -e "${C}│${N}           ${W}YT : ${B}JUN OFFICIAL              "
+echo -e "${C}│${N}                                             "
+echo -e "${C}│${N}     ${GR}Creator  : ${W}Jun Official${N}                  "
+echo -e "${C}│${N}     ${GR}Telegram : ${B}@JunMoods${N}                      "      
+echo -e "${C}│${N}     ${GR}Status   : ${G}Premium script${N}              "
+echo -e "${C}│${N}                                                        "
+echo -e "${C}└────────────────────────────────────────────────────────┘${N}"
+echo ""
 
-pkg update -y >/dev/null 2>&1 && ok "update"
-pkg upgrade -y >/dev/null 2>&1 && ok "upgrade"
+# Functions
+function load() {
+    echo -ne "${Y}[wait]${N} $1...\r"
+}
 
-for i in proot tar wget; do
-    pkg install $i -y >/dev/null 2>&1 && ok "install $i"
+function ok() { 
+    echo -e "${G}[ ok ]${N} $1"
+}
+
+function step() {
+    echo -e "\n${C}┌─[${N} $1 ${C}]${N}"
+}
+
+# System Update
+step "System Initialization"
+load "Updating repositories"
+pkg update -y >/dev/null 2>&1
+ok "Repositories updated"
+
+load "Upgrading packages"
+pkg upgrade -y >/dev/null 2>&1
+ok "Packages upgraded"
+
+# Dependencies
+step "Installing Dependencies"
+for pkg in proot tar wget openssl; do
+    load "Installing $pkg"
+    pkg install $pkg -y >/dev/null 2>&1
+    ok "Installed $pkg"
 done
 
-mkdir -p MyTerminal
-cd MyTerminal
+# Setup Directory
+INSTALL_DIR="$HOME/MyTerminal"
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR" || exit
 
-load "download ubuntu"
-wget -O ubuntu.tar.gz https://partner-images.canonical.com/core/focal/current/ubuntu-focal-core-cloudimg-arm64-root.tar.gz >/dev/null 2>&1 && ok "download ubuntu"
+# Download Rootfs
+step "Downloading Ubuntu Core"
+if [ -f "ubuntu.tar.gz" ]; then
+    rm ubuntu.tar.gz
+fi
 
-load "extract rootfs"
+echo -e "${GR}Downloading image from Canonical server...${N}"
+wget -q --show-progress -O ubuntu.tar.gz https://partner-images.canonical.com/core/focal/current/ubuntu-focal-core-cloudimg-arm64-root.tar.gz
+
+if [ ! -f "ubuntu.tar.gz" ]; then
+    echo -e "${R}[fail] Download failed. Check internet connection.${N}"
+    exit 1
+fi
+ok "Download complete"
+
+# Extraction
+step "Extracting Filesystem"
+load "Decompressing rootfs (Do not close)"
 mkdir -p rootfs
-tar -xzf ubuntu.tar.gz -C rootfs >/dev/null 2>&1 && ok "extract"
+proot --link2symlink tar -xzf ubuntu.tar.gz -C rootfs --exclude='dev' || :
 rm ubuntu.tar.gz
+ok "Extraction complete"
 
+# DNS Config
 echo "nameserver 8.8.8.8" > rootfs/etc/resolv.conf
 echo "nameserver 8.8.4.4" >> rootfs/etc/resolv.conf
 
+# Create Launcher
+step "Finalizing Setup"
 cat > start.sh << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-unset LD_PRELOAD
-ROOTFS=$(dirname $0)/rootfs
-proot --link2symlink -0 -r $ROOTFS -b /dev -b /proc -b /sys -w /root /usr/bin/env -i HOME=/root PATH=/usr/bin:/usr/sbin:/bin:/sbin TERM=$TERM SHELL=/bin/bash /bin/bash --login
-EOF
-chmod +x start.sh
-ok "launcher siap"
-
+C='\033[1;36m'
+Y='\033[1;33m'
+B='\033[1;34m'
+N='\033[0m'
 clear
-echo -e "${G}★ Sukses Bang ★${N}"
-echo -e "jalankan: ${Y}cd MyTerminal && ./start.sh${N}"
+echo -e "${C}┌──────────────────────────────────────────┐${N}"
+echo -e "${C}│${Y}       MyTerminalOS - Ubuntu Focal        ${C}│${N}"
+echo -e "${C}└──────────────────────────────────────────┘${N}"
+echo -e "${B}Welcome back, Jun Official User!${N}"
+echo ""
+unset LD_PRELOAD
+command="proot"
+command+=" --link2symlink"
+command+=" -0"
+command+=" -r $(dirname $0)/rootfs"
+command+=" -b /dev"
+command+=" -b /proc"
+command+=" -b /sys"
+command+=" -w /root"
+command+=" /usr/bin/env -i"
+command+=" HOME=/root"
+command+=" PATH=/usr/bin:/usr/sbin:/bin:/sbin"
+command+=" TERM=$TERM"
+command+=" LANG=C.UTF-8"
+command+=" /bin/bash --login"
+exec $command
+EOF
+
+chmod +x start.sh
+ok "Launcher created"
+
+# Create Alias
+if ! grep -q "gascoy" "$HOME/.bashrc"; then
+    echo "alias gascoy='bash MyTerminal/start.sh'" >> "$HOME/.bashrc"
+    ok "Alias 'gascoy' added to .bashrc"
+else
+    ok "Alias already exists"
+fi
+
+# Completion
+clear
+echo -e "${C}┌────────────────────────────────────────────────────────┐${N}"
+echo -e "${C}│${N}                                                        ${C}│${N}"
+echo -e "${C}│${G}             INSTALLATION SUCCESSFUL ${VERIFIED}               ${C}│${N}"
+echo -e "${C}│${N}                                                        ${C}│${N}"
+echo -e "${C}│${N}    ${W}Command to start:${N}                                   ${C}│${N}"
+echo -e "${C}│${N}    ${B}gascoy${N}                                              ${C}│${N}"
+echo -e "${C}│${N}                                                        ${C}│${N}"
+echo -e "${C}│${N}    ${GR}User/Pass : root / (none)${N}                           ${C}│${N}"
+echo -e "${C}│${N}                                                        ${C}│${N}"
+echo -e "${C}└────────────────────────────────────────────────────────┘${N}"
+echo ""
+# Refresh bashrc for immediate use
+source "$HOME/.bashrc" 2>/dev/null
